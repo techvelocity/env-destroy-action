@@ -17,5 +17,5 @@ inputs:
     description: "specific veloctl version (default: latest)"
     default: "latest"
 runs:
-  using: "node12"
+  using: "node16"
   main: "dist/index.js"
