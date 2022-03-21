@@ -16,7 +16,7 @@ test('extracts specific veloctl version', async () => {
   const veloctl = await download(version)
   expect(fs.existsSync(veloctl))
 
-  const versionOutput = cp.execFileSync(veloctl, ['-v']).toString()
+  const versionOutput = cp.execFileSync(veloctl, ['version']).toString()
   expect(versionOutput === `veloctl version ${version}`)
 })
 
@@ -26,6 +26,6 @@ test('extracts the latest veloctl', async () => {
   const veloctl = await download()
   expect(fs.existsSync(veloctl))
 
-  const versionOutput = cp.execFileSync(veloctl, ['-v']).toString()
+  const versionOutput = cp.execFileSync(veloctl, ['version']).toString()
   expect(versionOutput === `veloctl version ${latestVersion}`)
 })
