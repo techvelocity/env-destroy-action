@@ -60035,6 +60035,8 @@ const thisErrorCaptureStackTrace = Error.captureStackTrace;
 
 const thisSymbolToString = Symbol.prototype.toString;
 const thisSymbolToStringTag = Symbol.toStringTag;
+const thisSymbolIterator = Symbol.iterator;
+const thisSymbolNodeJSUtilInspectCustom = Symbol.for('nodejs.util.inspect.custom');
 
 /**
  * VMError.
@@ -60244,7 +60246,7 @@ function createBridge(otherInit, registerProxy) {
 		try {
 			return otherReflectApply(otherObjectHasOwnProperty, object, [key]) === true;
 		} catch (e) { // @other(unsafe)
-			throw thisFromOther(e);
+			throw thisFromOtherForThrow(e);
 		}
 	}
 
@@ -60257,7 +60259,7 @@ function createBridge(otherInit, registerProxy) {
 			try {
 				ret = otherReflectApply(getter, object, [key]);
 			} catch (e) {
-				throw thisFromOther(e);
+				throw thisFromOtherForThrow(e);
 			}
 		} else {
 			ret = desc.value;
@@ -60271,7 +60273,7 @@ function createBridge(otherInit, registerProxy) {
 		try {
 			to[key] = otherFromThis(from[key]);
 		} catch (e) { // @other(unsafe)
-			throw thisFromOther(e);
+			throw thisFromOtherForThrow(e);
 		}
 		return true;
 	}
@@ -60281,7 +60283,11 @@ function createBridge(otherInit, registerProxy) {
 		constructor(object) {
 			// Note: object@other(unsafe) throws@this(unsafe)
 			super();
-			this.object = object;
+			this.objectWrapper = () => object;
+		}
+
+		getObject() {
+			return this.objectWrapper();
 		}
 
 		getFactory() {
@@ -60299,7 +60305,7 @@ function createBridge(otherInit, registerProxy) {
 			try {
 				keys = otherReflectOwnKeys(object);
 			} catch (e) { // @other(unsafe)
-				throw thisFromOther(e);
+				throw thisFromOtherForThrow(e);
 			}
 			for (let i = 0; i < keys.length; i++) {
 				const key = keys[i]; // @prim
@@ -60307,7 +60313,7 @@ function createBridge(otherInit, registerProxy) {
 				try {
 					desc = otherSafeGetOwnPropertyDescriptor(object, key);
 				} catch (e) { // @other(unsafe)
-					throw thisFromOther(e);
+					throw thisFromOtherForThrow(e);
 				}
 				if (!desc) continue;
 				if (!desc.configurable) {
@@ -60341,7 +60347,7 @@ function createBridge(otherInit, registerProxy) {
 
 		get(target, key, receiver) {
 			// Note: target@this(unsafe) key@prim receiver@this(unsafe) throws@this(unsafe)
-			const object = this.object; // @other(unsafe)
+			const object = this.getObject(); // @other(unsafe)
 			switch (key) {
 				case 'constructor': {
 					const desc = otherSafeGetOwnPropertyDescriptor(object, key);
@@ -60364,21 +60370,23 @@ function createBridge(otherInit, registerProxy) {
 				case 'arguments':
 				case 'caller':
 				case 'callee':
-					if (thisOtherHasOwnProperty(object, key)) throw thisThrowCallerCalleeArgumentsAccess(key);
+					if (typeof object === 'function' && thisOtherHasOwnProperty(object, key)) {
+						throw thisThrowCallerCalleeArgumentsAccess(key);
+					}
 					break;
 			}
 			let ret; // @other(unsafe)
 			try {
 				ret = otherReflectGet(object, key);
 			} catch (e) { // @other(unsafe)
-				throw thisFromOther(e);
+				throw thisFromOtherForThrow(e);
 			}
 			return this.fromOtherWithContext(ret);
 		}
 
 		set(target, key, value, receiver) {
 			// Note: target@this(unsafe) key@prim value@this(unsafe) receiver@this(unsafe) throws@this(unsafe)
-			const object = this.object; // @other(unsafe)
+			const object = this.getObject(); // @other(unsafe)
 			if (key === '__proto__' && !thisOtherHasOwnProperty(object, key)) {
 				return this.setPrototypeOf(target, value);
 			}
@@ -60386,7 +60394,7 @@ function createBridge(otherInit, registerProxy) {
 				value = otherFromThis(value);
 				return otherReflectSet(object, key, value) === true;
 			} catch (e) { // @other(unsafe)
-				throw thisFromOther(e);
+				throw thisFromOtherForThrow(e);
 			}
 		}
 
@@ -60402,46 +60410,46 @@ function createBridge(otherInit, registerProxy) {
 
 		apply(target, context, args) {
 			// Note: target@this(unsafe) context@this(unsafe) args@this(safe-array) throws@this(unsafe)
-			const object = this.object; // @other(unsafe)
+			const object = this.getObject(); // @other(unsafe)
 			let ret; // @other(unsafe)
 			try {
 				context = otherFromThis(context);
 				args = otherFromThisArguments(args);
 				ret = otherReflectApply(object, context, args);
 			} catch (e) { // @other(unsafe)
-				throw thisFromOther(e);
+				throw thisFromOtherForThrow(e);
 			}
 			return thisFromOther(ret);
 		}
 
 		construct(target, args, newTarget) {
 			// Note: target@this(unsafe) args@this(safe-array) newTarget@this(unsafe) throws@this(unsafe)
-			const object = this.object; // @other(unsafe)
+			const object = this.getObject(); // @other(unsafe)
 			let ret; // @other(unsafe)
 			try {
 				args = otherFromThisArguments(args);
 				ret = otherReflectConstruct(object, args);
 			} catch (e) { // @other(unsafe)
-				throw thisFromOther(e);
+				throw thisFromOtherForThrow(e);
 			}
 			return thisFromOtherWithFactory(this.getFactory(), ret, thisFromOther(object));
 		}
 
 		getOwnPropertyDescriptorDesc(target, prop, desc) {
 			// Note: target@this(unsafe) prop@prim desc@other{safe} throws@this(unsafe)
-			const object = this.object; // @other(unsafe)
+			const object = this.getObject(); // @other(unsafe)
 			if (desc && typeof object === 'function' && (prop === 'arguments' || prop === 'caller' || prop === 'callee')) desc.value = null;
 			return desc;
 		}
 
 		getOwnPropertyDescriptor(target, prop) {
 			// Note: target@this(unsafe) prop@prim throws@this(unsafe)
-			const object = this.object; // @other(unsafe)
+			const object = this.getObject(); // @other(unsafe)
 			let desc; // @other(safe)
 			try {
 				desc = otherSafeGetOwnPropertyDescriptor(object, prop);
 			} catch (e) { // @other(unsafe)
-				throw thisFromOther(e);
+				throw thisFromOtherForThrow(e);
 			}
 
 			desc = this.getOwnPropertyDescriptorDesc(target, prop, desc);
@@ -60482,7 +60490,7 @@ function createBridge(otherInit, registerProxy) {
 
 		defineProperty(target, prop, desc) {
 			// Note: target@this(unsafe) prop@prim desc@this(unsafe) throws@this(unsafe)
-			const object = this.object; // @other(unsafe)
+			const object = this.getObject(); // @other(unsafe)
 			if (!thisReflectSetPrototypeOf(desc, null)) throw thisUnexpected();
 
 			desc = this.definePropertyDesc(target, prop, desc);
@@ -60506,7 +60514,7 @@ function createBridge(otherInit, registerProxy) {
 					otherDesc = otherSafeGetOwnPropertyDescriptor(object, prop);
 				}
 			} catch (e) { // @other(unsafe)
-				throw thisFromOther(e);
+				throw thisFromOtherForThrow(e);
 			}
 
 			if (!otherDesc.configurable) {
@@ -60535,31 +60543,31 @@ function createBridge(otherInit, registerProxy) {
 
 		deleteProperty(target, prop) {
 			// Note: target@this(unsafe) prop@prim throws@this(unsafe)
-			const object = this.object; // @other(unsafe)
+			const object = this.getObject(); // @other(unsafe)
 			try {
 				return otherReflectDeleteProperty(object, prop) === true;
 			} catch (e) { // @other(unsafe)
-				throw thisFromOther(e);
+				throw thisFromOtherForThrow(e);
 			}
 		}
 
 		has(target, key) {
 			// Note: target@this(unsafe) key@prim throws@this(unsafe)
-			const object = this.object; // @other(unsafe)
+			const object = this.getObject(); // @other(unsafe)
 			try {
 				return otherReflectHas(object, key) === true;
 			} catch (e) { // @other(unsafe)
-				throw thisFromOther(e);
+				throw thisFromOtherForThrow(e);
 			}
 		}
 
 		isExtensible(target) {
 			// Note: target@this(unsafe) throws@this(unsafe)
-			const object = this.object; // @other(unsafe)
+			const object = this.getObject(); // @other(unsafe)
 			try {
 				if (otherReflectIsExtensible(object)) return true;
 			} catch (e) { // @other(unsafe)
-				throw thisFromOther(e);
+				throw thisFromOtherForThrow(e);
 			}
 			if (thisReflectIsExtensible(target)) {
 				this.doPreventExtensions(target, object, this);
@@ -60569,23 +60577,23 @@ function createBridge(otherInit, registerProxy) {
 
 		ownKeys(target) {
 			// Note: target@this(unsafe) throws@this(unsafe)
-			const object = this.object; // @other(unsafe)
+			const object = this.getObject(); // @other(unsafe)
 			let res; // @other(unsafe)
 			try {
 				res = otherReflectOwnKeys(object);
 			} catch (e) { // @other(unsafe)
-				throw thisFromOther(e);
+				throw thisFromOtherForThrow(e);
 			}
 			return thisFromOther(res);
 		}
 
 		preventExtensions(target) {
 			// Note: target@this(unsafe) throws@this(unsafe)
-			const object = this.object; // @other(unsafe)
+			const object = this.getObject(); // @other(unsafe)
 			try {
 				if (!otherReflectPreventExtensions(object)) return false;
 			} catch (e) { // @other(unsafe)
-				throw thisFromOther(e);
+				throw thisFromOtherForThrow(e);
 			}
 			if (thisReflectIsExtensible(target)) {
 				this.doPreventExtensions(target, object, this);
@@ -60595,17 +60603,21 @@ function createBridge(otherInit, registerProxy) {
 
 		enumerate(target) {
 			// Note: target@this(unsafe) throws@this(unsafe)
-			const object = this.object; // @other(unsafe)
+			const object = this.getObject(); // @other(unsafe)
 			let res; // @other(unsafe)
 			try {
 				res = otherReflectEnumerate(object);
 			} catch (e) { // @other(unsafe)
-				throw thisFromOther(e);
+				throw thisFromOtherForThrow(e);
 			}
 			return this.fromOtherWithContext(res);
 		}
 
 	}
+
+	BaseHandler.prototype[thisSymbolNodeJSUtilInspectCustom] = undefined;
+	BaseHandler.prototype[thisSymbolToStringTag] = 'VM2 Wrapper';
+	BaseHandler.prototype[thisSymbolIterator] = undefined;
 
 	function defaultFactory(object) {
 		// Note: other@other(unsafe) returns@this(unsafe) throws@this(unsafe)
@@ -60704,7 +60716,7 @@ function createBridge(otherInit, registerProxy) {
 
 		get(target, key, receiver) {
 			// Note: target@this(unsafe) key@prim receiver@this(unsafe) throws@this(unsafe)
-			const object = this.object; // @other(unsafe)
+			const object = this.getObject(); // @other(unsafe)
 			const mock = this.mock;
 			if (thisReflectApply(thisObjectHasOwnProperty, mock, key) && !thisOtherHasOwnProperty(object, key)) {
 				return mock[key];
@@ -60748,26 +60760,25 @@ function createBridge(otherInit, registerProxy) {
 		const type = typeof other;
 		switch (type) {
 			case 'object':
-			case 'function':
 				if (other === null) {
 					return null;
-				} else {
-					let proto = thisReflectGetPrototypeOf(other);
-					if (!proto) {
-						return other;
-					}
-					while (proto) {
-						const mapping = thisReflectApply(thisMapGet, protoMappings, [proto]);
-						if (mapping) {
-							const mapped = thisReflectApply(thisWeakMapGet, mappingOtherToThis, [other]);
-							if (mapped) return mapped;
-							return mapping(defaultFactory, other);
-						}
-						proto = thisReflectGetPrototypeOf(proto);
-					}
+				}
+				// fallthrough
+			case 'function':
+				let proto = thisReflectGetPrototypeOf(other);
+				if (!proto) {
 					return other;
 				}
-
+				while (proto) {
+					const mapping = thisReflectApply(thisMapGet, protoMappings, [proto]);
+					if (mapping) {
+						const mapped = thisReflectApply(thisWeakMapGet, mappingOtherToThis, [other]);
+						if (mapped) return mapped;
+						return mapping(defaultFactory, other);
+					}
+					proto = thisReflectGetPrototypeOf(proto);
+				}
+				return other;
 			case 'undefined':
 			case 'string':
 			case 'number':
@@ -60781,42 +60792,40 @@ function createBridge(otherInit, registerProxy) {
 		}
 	}
 
-	function thisFromOtherWithFactory(factory, other, proto) {
+	function thisFromOtherForThrow(other) {
 		for (let loop = 0; loop < 10; loop++) {
 			const type = typeof other;
 			switch (type) {
 				case 'object':
-				case 'function':
 					if (other === null) {
 						return null;
-					} else {
-						const mapped = thisReflectApply(thisWeakMapGet, mappingOtherToThis, [other]);
-						if (mapped) return mapped;
-						if (proto) {
-							return thisProxyOther(factory, other, proto);
-						}
+					}
+					// fallthrough
+				case 'function':
+					const mapped = thisReflectApply(thisWeakMapGet, mappingOtherToThis, [other]);
+					if (mapped) return mapped;
+					let proto;
+					try {
+						proto = otherReflectGetPrototypeOf(other);
+					} catch (e) { // @other(unsafe)
+						other = e;
+						break;
+					}
+					if (!proto) {
+						return thisProxyOther(defaultFactory, other, null);
+					}
+					for (;;) {
+						const mapping = thisReflectApply(thisMapGet, protoMappings, [proto]);
+						if (mapping) return mapping(defaultFactory, other);
 						try {
-							proto = otherReflectGetPrototypeOf(other);
+							proto = otherReflectGetPrototypeOf(proto);
 						} catch (e) { // @other(unsafe)
 							other = e;
 							break;
 						}
-						if (!proto) {
-							return thisProxyOther(factory, other, null);
-						}
-						while (proto) {
-							const mapping = thisReflectApply(thisMapGet, protoMappings, [proto]);
-							if (mapping) return mapping(factory, other);
-							try {
-								proto = otherReflectGetPrototypeOf(proto);
-							} catch (e) { // @other(unsafe)
-								other = e;
-								break;
-							}
-						}
-						return thisProxyOther(factory, other, thisObjectPrototype);
+						if (!proto) return thisProxyOther(defaultFactory, other, thisObjectPrototype);
 					}
-
+					break;
 				case 'undefined':
 				case 'string':
 				case 'number':
@@ -60828,10 +60837,53 @@ function createBridge(otherInit, registerProxy) {
 				default: // new, unknown types can be dangerous
 					throw new VMError(`Unknown type '${type}'`);
 			}
-			factory = defaultFactory;
-			proto = undefined;
 		}
 		throw new VMError('Exception recursion depth');
+	}
+
+	function thisFromOtherWithFactory(factory, other, proto) {
+		const type = typeof other;
+		switch (type) {
+			case 'object':
+				if (other === null) {
+					return null;
+				}
+				// fallthrough
+			case 'function':
+				const mapped = thisReflectApply(thisWeakMapGet, mappingOtherToThis, [other]);
+				if (mapped) return mapped;
+				if (proto) {
+					return thisProxyOther(factory, other, proto);
+				}
+				try {
+					proto = otherReflectGetPrototypeOf(other);
+				} catch (e) { // @other(unsafe)
+					throw thisFromOtherForThrow(e);
+				}
+				if (!proto) {
+					return thisProxyOther(factory, other, null);
+				}
+				do {
+					const mapping = thisReflectApply(thisMapGet, protoMappings, [proto]);
+					if (mapping) return mapping(factory, other);
+					try {
+						proto = otherReflectGetPrototypeOf(proto);
+					} catch (e) { // @other(unsafe)
+						throw thisFromOtherForThrow(e);
+					}
+				} while (proto);
+				return thisProxyOther(factory, other, thisObjectPrototype);
+			case 'undefined':
+			case 'string':
+			case 'number':
+			case 'boolean':
+			case 'symbol':
+			case 'bigint':
+				return other;
+
+			default: // new, unknown types can be dangerous
+				throw new VMError(`Unknown type '${type}'`);
+		}
 	}
 
 	function thisFromOtherArguments(args) {
@@ -61205,6 +61257,7 @@ class NodeVM extends VM {
 	 * @param {resolveCallback} [options.require.resolve] - An additional lookup function in case a module wasn't
 	 * found in one of the traditional node lookup paths.
 	 * @param {customRequire} [options.require.customRequire=require] - Custom require to require host and built-in modules.
+	 * @param {boolean} [option.require.strict=true] - Load required modules in strict mode.
 	 * @param {boolean} [options.nesting=false] -
 	 * <b>WARNING: Allowing this is a security risk as scripts can create a NodeVM which can require any host module.</b>
 	 * Allow nesting of VMs.
@@ -61283,7 +61336,8 @@ class NodeVM extends VM {
 		const {
 			Module,
 			jsonParse,
-			createRequireForModule
+			createRequireForModule,
+			requireImpl
 		} = closure(HOST, {
 			__proto__: null,
 			argv,
@@ -61299,11 +61353,12 @@ class NodeVM extends VM {
 			_Module: {__proto__: null, value: Module},
 			_jsonParse: {__proto__: null, value: jsonParse},
 			_createRequireForModule: {__proto__: null, value: createRequireForModule},
+			_requireImpl: {__proto__: null, value: requireImpl},
 			_cacheRequireModule: {__proto__: null, value: null, writable: true}
 		});
 
 
-		resolver.init(this, ()=>true);
+		resolver.init(this);
 
 		// prepare global sandbox
 		if (sandbox) {
@@ -61352,10 +61407,12 @@ class NodeVM extends VM {
 		const path = this._resolver.pathResolve('.');
 		let mod = this._cacheRequireModule;
 		if (!mod || mod.path !== path) {
-			mod = new (this._Module)(this._resolver.pathConcat(path, '/vm.js'), path);
+			const filename = this._resolver.pathConcat(path, '/vm.js');
+			mod = new (this._Module)(filename, path);
+			this._resolver.registerModule(mod, filename, path, null, false);
 			this._cacheRequireModule = mod;
 		}
-		return mod.require(module);
+		return this._requireImpl(mod, module, true);
 	}
 
 	/**
@@ -61426,9 +61483,9 @@ class NodeVM extends VM {
 				}
 			}
 			const prefix = strict ? STRICT_MODULE_PREFIX : MODULE_PREFIX;
-			let scriptCode = prefix + this._compiler(code, unresolvedFilename) + MODULE_SUFFIX;
-			scriptCode = transformer(null, scriptCode, false, false).code;
-			script = new Script(scriptCode, {
+			let scriptCode = this._compiler(code, unresolvedFilename);
+			scriptCode = transformer(null, scriptCode, false, false, unresolvedFilename).code;
+			script = new Script(prefix + scriptCode + MODULE_SUFFIX, {
 				__proto__: null,
 				filename: unresolvedFilename,
 				displayErrors: false
@@ -61574,8 +61631,8 @@ function makeExternalMatcher(obj) {
 
 class LegacyResolver extends DefaultResolver {
 
-	constructor(builtinModules, checkPath, globalPaths, pathContext, customResolver, hostRequire, compiler, externals, allowTransitive) {
-		super(builtinModules, checkPath, globalPaths, pathContext, customResolver, hostRequire, compiler);
+	constructor(builtinModules, checkPath, globalPaths, pathContext, customResolver, hostRequire, compiler, strict, externals, allowTransitive) {
+		super(builtinModules, checkPath, globalPaths, pathContext, customResolver, hostRequire, compiler, strict);
 		this.externals = externals;
 		this.currMod = undefined;
 		this.trustedMods = new WeakMap();
@@ -61810,7 +61867,8 @@ function resolverFromOptions(vm, options, override, compiler) {
 		root: rootPaths,
 		resolve: customResolver,
 		customRequire: hostRequire = defaultRequire,
-		context = 'host'
+		context = 'host',
+		strict = true,
 	} = options;
 
 	const builtins = genBuiltinsFromOptions(vm, builtinOpt, mockOpt, override);
@@ -61824,7 +61882,7 @@ function resolverFromOptions(vm, options, override, compiler) {
 			return checkedRootPaths.some(path => {
 				if (!filename.startsWith(path)) return false;
 				const len = path.length;
-				if (filename.length === len) return true;
+				if (filename.length === len || (len > 0 && path[len-1] === pa.sep)) return true;
 				const sep = filename[len];
 				return sep === '/' || sep === pa.sep;
 			});
@@ -61853,7 +61911,7 @@ function resolverFromOptions(vm, options, override, compiler) {
 	}
 
 	if (typeof externalOpt !== 'object') {
-		return new DefaultResolver(builtins, checkPath, [], () => context, newCustomResolver, hostRequire, compiler);
+		return new DefaultResolver(builtins, checkPath, [], () => context, newCustomResolver, hostRequire, compiler, strict);
 	}
 
 	let transitive = false;
@@ -61864,7 +61922,7 @@ function resolverFromOptions(vm, options, override, compiler) {
 		transitive = context === 'sandbox' && externalOpt.transitive;
 	}
 	externals = external.map(makeExternalMatcher);
-	return new LegacyResolver(builtins, checkPath, [], () => context, newCustomResolver, hostRequire, compiler, externals, transitive);
+	return new LegacyResolver(builtins, checkPath, [], () => context, newCustomResolver, hostRequire, compiler, strict, externals, transitive);
 }
 
 exports.resolverFromOptions = resolverFromOptions;
@@ -62018,12 +62076,13 @@ class Resolver {
 
 class DefaultResolver extends Resolver {
 
-	constructor(builtinModules, checkPath, globalPaths, pathContext, customResolver, hostRequire, compiler) {
+	constructor(builtinModules, checkPath, globalPaths, pathContext, customResolver, hostRequire, compiler, strict) {
 		super(builtinModules, globalPaths, hostRequire);
 		this.checkPath = checkPath;
 		this.pathContext = pathContext;
 		this.customResolver = customResolver;
 		this.compiler = compiler;
+		this.strict = strict;
 		this.packageCache = {__proto__: null};
 		this.scriptCache = {__proto__: null};
 	}
@@ -62078,7 +62137,7 @@ class DefaultResolver extends Resolver {
 		this.checkAccess(mod, filename);
 		if (this.pathContext(filename, 'js') === 'sandbox') {
 			const script = this.readScript(filename);
-			vm.run(script, {filename, strict: true, module: mod, wrapper: 'none', dirname: mod.path});
+			vm.run(script, {filename, strict: this.strict, module: mod, wrapper: 'none', dirname: mod.path});
 		} else {
 			const m = this.hostRequire(filename);
 			mod.exports = vm.readonly(m);
@@ -63077,7 +63136,7 @@ class VMScript {
 	getCompiledCode() {
 		if (!this._compiledCode) {
 			const comp = this._compiler(this._prefix + removeShebang(this._code) + this._suffix, this.filename);
-			const res = transformer(null, comp, false, false);
+			const res = transformer(null, comp, false, false, this.filename);
 			this._compiledCode = res.code;
 			this._hasAsync = res.hasAsync;
 		}
@@ -63162,7 +63221,7 @@ exports.VMScript = VMScript;
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 
-const {parse: acornParse} = __nccwpck_require__(390);
+const {Parser: AcornParser, isNewLine: acornIsNewLine, getLineInfo: acornGetLineInfo} = __nccwpck_require__(390);
 const {full: acornWalkFull} = __nccwpck_require__(5000);
 
 const INTERNAL_STATE_NAME = 'VM2_INTERNAL_STATE_DO_NOT_USE_OR_PROGRAM_WILL_FAIL';
@@ -63173,11 +63232,51 @@ function assertType(node, type) {
 	return node;
 }
 
-function transformer(args, body, isAsync, isGenerator) {
+function makeNiceSyntaxError(message, code, filename, location, tokenizer) {
+	const loc = acornGetLineInfo(code, location);
+	let end = location;
+	while (end < code.length && !acornIsNewLine(code.charCodeAt(end))) {
+		end++;
+	}
+	let markerEnd = tokenizer.start === location ? tokenizer.end : location + 1;
+	if (!markerEnd || markerEnd > end) markerEnd = end;
+	let markerLen = markerEnd - location;
+	if (markerLen <= 0) markerLen = 1;
+	if (message === 'Unexpected token') {
+		const type = tokenizer.type;
+		if (type.label === 'name' || type.label === 'privateId') {
+			message = 'Unexpected identifier';
+		} else if (type.label === 'eof') {
+			message = 'Unexpected end of input';
+		} else if (type.label === 'num') {
+			message = 'Unexpected number';
+		} else if (type.label === 'string') {
+			message = 'Unexpected string';
+		} else if (type.label === 'regexp') {
+			message = 'Unexpected token \'/\'';
+			markerLen = 1;
+		} else {
+			const token = tokenizer.value || type.label;
+			message = `Unexpected token '${token}'`;
+		}
+	}
+	const error = new SyntaxError(message);
+	if (!filename) return error;
+	const line = code.slice(location - loc.column, end);
+	const marker = line.slice(0, loc.column).replace(/\S/g, ' ') + '^'.repeat(markerLen);
+	error.stack = `${filename}:${loc.line}\n${line}\n${marker}\n\n${error.stack}`;
+	return error;
+}
+
+function transformer(args, body, isAsync, isGenerator, filename) {
 	let code;
 	let argsOffset;
 	if (args === null) {
 		code = body;
+		// Note: Keywords are not allows to contain u escapes
+		if (!/\b(?:catch|import|async)\b/.test(code)) {
+			return {__proto__: null, code, hasAsync: false};
+		}
 	} else {
 		code = isAsync ? '(async function' : '(function';
 		if (isGenerator) code += '*';
@@ -63189,31 +63288,50 @@ function transformer(args, body, isAsync, isGenerator) {
 		code += '\n})';
 	}
 
-	const ast = acornParse(code, {
+	const parser = new AcornParser({
 		__proto__: null,
-		ecmaVersion: 2020,
+		ecmaVersion: 2022,
 		allowAwaitOutsideFunction: args === null && isAsync,
 		allowReturnOutsideFunction: args === null
-	});
+	}, code);
+	let ast;
+	try {
+		ast = parser.parse();
+	} catch (e) {
+		// Try to generate a nicer error message.
+		if (e instanceof SyntaxError && e.pos !== undefined) {
+			let message = e.message;
+			const match = message.match(/^(.*) \(\d+:\d+\)$/);
+			if (match) message = match[1];
+			e = makeNiceSyntaxError(message, code, filename, e.pos, parser);
+		}
+		throw e;
+	}
 
 	if (args !== null) {
 		const pBody = assertType(ast, 'Program').body;
-		if (pBody.length !== 1) throw new Error('Invalid arguments');
+		if (pBody.length !== 1) throw new SyntaxError('Single function literal required');
 		const expr = pBody[0];
-		if (expr.type !== 'ExpressionStatement') throw new Error('Invalid arguments');
+		if (expr.type !== 'ExpressionStatement') throw new SyntaxError('Single function literal required');
 		const func = expr.expression;
-		if (func.type !== 'FunctionExpression') throw new Error('Invalid arguments');
-		if (func.body.start !== argsOffset + 3) throw new Error('Invalid arguments');
+		if (func.type !== 'FunctionExpression') throw new SyntaxError('Single function literal required');
+		if (func.body.start !== argsOffset + 3) throw new SyntaxError('Unexpected end of arg string');
 	}
 
 	const insertions = [];
 	let hasAsync = false;
 
-	const RIGHT = -100;
-	const LEFT = 100;
+	const TO_LEFT = -100;
+	const TO_RIGHT = 100;
+
+	let internStateValiable = undefined;
 
 	acornWalkFull(ast, (node, state, type) => {
-		if (type === 'CatchClause') {
+		if (type === 'Function') {
+			if (node.async) hasAsync = true;
+		}
+		const nodeType = node.type;
+		if (nodeType === 'CatchClause') {
 			const param = node.param;
 			if (param) {
 				const name = assertType(param, 'Identifier').name;
@@ -63222,39 +63340,47 @@ function transformer(args, body, isAsync, isGenerator) {
 					insertions.push({
 						__proto__: null,
 						pos: cBody.body[0].start,
-						order: RIGHT,
+						order: TO_LEFT,
 						code: `${name}=${INTERNAL_STATE_NAME}.handleException(${name});`
 					});
 				}
 			}
-		} else if (type === 'WithStatement') {
+		} else if (nodeType === 'WithStatement') {
 			insertions.push({
 				__proto__: null,
 				pos: node.object.start,
-				order: RIGHT,
+				order: TO_LEFT,
 				code: INTERNAL_STATE_NAME + '.wrapWith('
 			});
 			insertions.push({
 				__proto__: null,
 				pos: node.object.end,
-				order: LEFT,
+				order: TO_RIGHT,
 				code: ')'
 			});
-		} else if (type === 'Identifier') {
+		} else if (nodeType === 'Identifier') {
 			if (node.name === INTERNAL_STATE_NAME) {
-				throw new Error('Use of internal vm2 state variable');
+				if (internStateValiable === undefined || internStateValiable.start > node.start) {
+					internStateValiable = node;
+				}
 			}
-		} else if (type === 'ImportExpression') {
+		} else if (nodeType === 'ImportExpression') {
 			insertions.push({
 				__proto__: null,
 				pos: node.start,
-				order: LEFT,
+				order: TO_RIGHT,
 				code: INTERNAL_STATE_NAME + '.'
 			});
-		} else if (type === 'Function') {
-			if (node.async) hasAsync = true;
 		}
 	});
+
+	if (internStateValiable) {
+		throw makeNiceSyntaxError('Use of internal vm2 state variable', code, filename, internStateValiable.start, {
+			__proto__: null,
+			start: internStateValiable.start,
+			end: internStateValiable.end
+		});
+	}
 
 	if (insertions.length === 0) return {__proto__: null, code, hasAsync};
 
@@ -63373,7 +63499,7 @@ function checkAsync(allow) {
 }
 
 function transformAndCheck(args, code, isAsync, isGenerator, allowAsync) {
-	const ret = transformer(args, code, isAsync, isGenerator);
+	const ret = transformer(args, code, isAsync, isGenerator, undefined);
 	checkAsync(allowAsync || !ret.hasAsync);
 	return ret.code;
 }
@@ -63772,7 +63898,7 @@ class VM extends EventEmitter {
 		} else {
 			const useFileName = filename || 'vm.js';
 			let scriptCode = this._compiler(code, useFileName);
-			const ret = transformer(null, scriptCode, false, false);
+			const ret = transformer(null, scriptCode, false, false, useFileName);
 			scriptCode = ret.code;
 			checkAsync(this._allowAsync || !ret.hasAsync);
 			// Compile the script here so that we don't need to create a instance of VMScript.
