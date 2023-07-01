@@ -28,7 +28,7 @@
     "@actions/core": "^1.10.0",
     "@actions/exec": "^1.1.0",
     "@actions/tool-cache": "^2.0.1",
-    "@octokit/action": "^5.0.2",
+    "@octokit/action": "^6.0.4",
     "node-fetch": "^2.6.6",
     "semver": "^7.3.5"
   },
